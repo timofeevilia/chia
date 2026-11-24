@@ -216,10 +216,15 @@ func recoverPanic(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
-				if v := recover(); v != nil && v != http.ErrAbortHandler {
-					log.Error("panic", "value", v, "path", r.URL.Path)
-					writeError(w, http.StatusInternalServerError, "internal", "internal error")
+				v := recover()
+				if v == nil {
+					return
 				}
+				if err, ok := v.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+					panic(v) // the standard way to abort a response; let net/http handle it
+				}
+				log.Error("panic", "value", v, "path", r.URL.Path)
+				writeError(w, http.StatusInternalServerError, "internal", "internal error")
 			}()
 			next.ServeHTTP(w, r)
 		})

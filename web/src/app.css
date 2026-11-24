@@ -1,0 +1,211 @@
+:root {
+	--bg: #f7f5f0;
+	--surface: #ffffff;
+	--text: #1c2321;
+	--muted: #64706c;
+	--line: #e3dfd6;
+	--brand: #0f6b5c;
+	--brand-ink: #ffffff;
+	--brand-soft: #e2f1ec;
+	--pos: #0f6b5c;
+	--neg: #b4412c;
+	--radius: 14px;
+	color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #121715;
+		--surface: #1b2220;
+		--text: #e9eeec;
+		--muted: #9aa8a3;
+		--line: #2c3633;
+		--brand: #4fc3a8;
+		--brand-ink: #06231d;
+		--brand-soft: #1d332d;
+		--pos: #4fc3a8;
+		--neg: #f08a73;
+	}
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	-webkit-text-size-adjust: 100%;
+}
+main,
+.bar {
+	max-width: 720px;
+	margin: 0 auto;
+	padding: 0 16px;
+}
+h1 {
+	font-size: clamp(1.7rem, 5vw, 2.4rem);
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+	margin: 0 0 12px;
+}
+h2 {
+	font-size: 1.05rem;
+	margin: 0 0 12px;
+}
+p {
+	margin: 0 0 12px;
+}
+a {
+	color: var(--brand);
+}
+.muted {
+	color: var(--muted);
+}
+.small {
+	font-size: 0.875rem;
+}
+.card {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: 18px;
+	margin: 0 0 16px;
+}
+label {
+	display: block;
+	font-size: 0.875rem;
+	font-weight: 600;
+	margin: 0 0 4px;
+}
+input,
+select,
+button {
+	font: inherit;
+	color: inherit;
+}
+input[type='text'],
+input[type='tel'],
+input:not([type]),
+select {
+	width: 100%;
+	min-height: 44px;
+	padding: 8px 12px;
+	background: var(--bg);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+}
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible {
+	outline: 2px solid var(--brand);
+	outline-offset: 2px;
+}
+.field {
+	margin-bottom: 12px;
+}
+.row {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+}
+.row > .grow {
+	flex: 1;
+	min-width: 0;
+}
+.wrap {
+	flex-wrap: wrap;
+}
+button {
+	min-height: 44px;
+	padding: 8px 16px;
+	border-radius: 10px;
+	border: 1px solid var(--line);
+	background: var(--surface);
+	cursor: pointer;
+	font-weight: 600;
+}
+button.primary {
+	background: var(--brand);
+	border-color: var(--brand);
+	color: var(--brand-ink);
+}
+button.ghost {
+	border-color: transparent;
+	background: transparent;
+	color: var(--brand);
+	padding: 8px 10px;
+}
+button.sm {
+	min-height: 36px;
+	padding: 4px 12px;
+	font-size: 0.875rem;
+}
+button:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+.error {
+	color: var(--neg);
+	font-size: 0.9rem;
+	margin: 8px 0 0;
+}
+.pos {
+	color: var(--pos);
+}
+.neg {
+	color: var(--neg);
+}
+.num {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+ul.list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+ul.list > li {
+	padding: 10px 0;
+	border-top: 1px solid var(--line);
+}
+ul.list > li:first-child {
+	border-top: 0;
+	padding-top: 0;
+}
+ul.list > li:last-child {
+	padding-bottom: 0;
+}
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px 4px 12px;
+	background: var(--brand-soft);
+	border-radius: 999px;
+	font-size: 0.9rem;
+}
+.chip button {
+	min-height: 28px;
+	width: 28px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	border-radius: 50%;
+}
+.check {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 40px;
+	padding: 4px 12px;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	font-weight: 400;
+	margin: 0;
+	cursor: pointer;
+}
+.check:has(input:checked) {
+	background: var(--brand-soft);
+	border-color: var(--brand);
+}

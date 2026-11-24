@@ -11,8 +11,7 @@ app in Vietnam (VietQR / NAPAS 247) or Singapore (PayNow / SGQR).
 
 Chia never holds or moves money. It keeps the books and prepares the payment request.
 
-> Status: the backend API is complete and tested. The web app (SvelteKit) and the public
-> deployment are in progress.
+> Status: the API and the web app are complete and tested. Public deployment is being set up.
 
 ## What is interesting here
 
@@ -50,6 +49,7 @@ internal/store          PostgreSQL access (pgx)
 internal/httpapi        generated server, handlers, middleware
 migrations              goose SQL migrations, embedded in the binary
 loadtest                k6 scenario
+web                     SvelteKit single-page app (English and Vietnamese)
 ```
 
 ### How an expense becomes ledger entries
@@ -121,6 +121,19 @@ There are no accounts or passwords to manage.
 | `CORS_ORIGINS` | `*` | Comma-separated allowed browser origins |
 | `TRUST_PROXY` | `false` | Use `X-Forwarded-For` for the client IP (set behind a proxy) |
 
+## Web app
+
+The web app in [`web/`](web) is a static single-page app built with SvelteKit and Svelte 5.
+Its API types are generated from the same OpenAPI document as the server.
+
+```bash
+cd web
+npm install
+npm run dev        # expects the API on http://localhost:8080
+```
+
+Set `VITE_API_URL` at build time to point it at another API.
+
 ## Development
 
 ```bash
@@ -153,6 +166,22 @@ with the same idempotency key, and read balances. Thresholds: under 0.1% failed 
 p95 below 150 ms for writes, and zero imbalanced groups or duplicate writes. CI runs it on
 every push and uploads the summary as a build artifact.
 
+Result of the first CI run (30 virtual users for 45 s on a 2-core GitHub-hosted runner that
+also hosts PostgreSQL, Redis and k6 itself):
+
+| Metric | Result |
+|---|---|
+| Requests | 37 039 total, about 820 per second |
+| Failed requests | 0 |
+| Expense write latency | median 4.6 ms, p95 71 ms, p99 80 ms |
+| Balance read latency | p95 65 ms |
+| Retries replayed correctly | 12 333 of 12 333 |
+| Imbalanced groups / duplicate writes | 0 / 0 |
+
+These numbers describe a small shared CI machine, not a production capacity claim. Balance
+reads aggregate all postings of a group, so they slow down as a group's history grows; a
+materialised balance table would be the next step if groups became very large.
+
 ## CI/CD
 
 GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs on every push and pull request:
@@ -160,7 +189,9 @@ GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs on every push and pul
 1. **test** – generated code matches the spec; migrations go up, down and up; tests with `-race`.
 2. **lint** – golangci-lint.
 3. **loadtest** – builds the Docker image, starts the stack with Compose, runs k6.
-4. **deploy** – on `main` only, after the three jobs above pass.
+4. **web** – generated API types match the spec; type check, unit tests, production build.
+5. **deploy** and **deploy-web** – on `main` only, after every job above passes. The API is
+   deployed to Render through a deploy hook; the web app is copied to the web host over SSH.
 
 ## Limitations
 

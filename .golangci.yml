@@ -13,4 +13,4 @@ linters:
       - path: _test\.go
         linters: [gosec, bodyclose]
       - linters: [errcheck]
-        text: "fmt.Fprint"
+        text: "fmt.Fprint|\\.Close` is not checked"

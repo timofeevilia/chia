@@ -70,7 +70,7 @@ func (s *Service) Table(ctx context.Context) (*Table, error) {
 		if stale, sErr := s.load(ctx, staleKey); sErr == nil {
 			return stale, nil
 		}
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	if raw, err := json.Marshal(t); err == nil {
 		// Cache writes are best effort; a Redis outage must not fail the request.

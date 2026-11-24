@@ -67,7 +67,7 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.15.0
 
   loadtest:
     # Builds the production image, starts the stack with Compose and runs k6
@@ -96,9 +96,38 @@ jobs:
           name: k6-summary
           path: k6-summary.json
 
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: API types are up to date with the OpenAPI spec
+        run: |
+          npm run generate
+          git diff --exit-code
+      - run: npm run check
+      - run: npm test
+      - name: Build
+        env:
+          VITE_API_URL: ${{ vars.API_URL || 'https://api.chia.krolikx.com' }}
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: web/build
+          include-hidden-files: true
+
   deploy:
     # Production deploy: only from main, only after every check above is green.
-    needs: [test, lint, loadtest]
+    needs: [test, lint, loadtest, web]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -112,3 +141,36 @@ jobs:
           fi
           curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL" -o /dev/null
           echo "Render deploy triggered." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-web:
+    # Static files go to the web host over SSH. The host key is pinned through
+    # a secret, so the runner never trusts an unknown server.
+    needs: [test, lint, loadtest, web]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SSH_KEY: ${{ secrets.WEB_SSH_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.WEB_SSH_KNOWN_HOSTS }}
+      SSH_HOST: ${{ secrets.WEB_SSH_HOST }}
+      SSH_USER: ${{ secrets.WEB_SSH_USER }}
+      SSH_PORT: ${{ secrets.WEB_SSH_PORT }}
+      TARGET_DIR: ${{ vars.WEB_TARGET_DIR || 'public_html/chia.krolikx.com' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: build
+      - name: Upload to web host
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_KNOWN_HOSTS" ]; then
+            echo "Web host secrets are not set; skipping deploy." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          SSH="ssh -i $HOME/.ssh/deploy_key -p ${SSH_PORT:-22} -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_USER@$SSH_HOST"
+          # Old fingerprinted assets are removed; everything else is overwritten in place.
+          tar -C build -czf - . | $SSH "mkdir -p '$TARGET_DIR' && rm -rf '$TARGET_DIR/_app' && tar -xzf - -C '$TARGET_DIR'"
+          echo "Web app deployed." >> "$GITHUB_STEP_SUMMARY"
