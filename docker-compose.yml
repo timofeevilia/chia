@@ -1,0 +1,36 @@
+# Local development and CI: `docker compose up --build` starts the whole backend.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: chia
+      POSTGRES_PASSWORD: chia
+      POSTGRES_DB: chia
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chia"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgres://chia:chia@postgres:5432/chia?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      # "static" uses built-in demo rates so the stack works offline; unset for live rates.
+      FX_SOURCE: ${FX_SOURCE:-static}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }

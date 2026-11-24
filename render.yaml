@@ -1,0 +1,21 @@
+# Render blueprint for the API (https://render.com/docs/blueprint-spec).
+# Deploys are triggered by CI through a deploy hook once tests pass.
+services:
+  - type: web
+    name: chia-api
+    runtime: docker
+    region: singapore
+    plan: free
+    autoDeploy: false
+    healthCheckPath: /livez
+    envVars:
+      - key: DATABASE_URL # Neon connection string
+        sync: false
+      - key: REDIS_URL # Upstash rediss:// URL
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://chia.krolikx.com
+      - key: TRUST_PROXY
+        value: "true"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "120"

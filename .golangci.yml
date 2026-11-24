@@ -1,0 +1,16 @@
+version: "2"
+linters:
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - unconvert
+  exclusions:
+    paths:
+      - internal/httpapi/api.gen.go
+    rules:
+      - path: _test\.go
+        linters: [gosec, bodyclose]
+      - linters: [errcheck]
+        text: "fmt.Fprint"

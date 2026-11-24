@@ -1,0 +1,530 @@
+openapi: 3.0.3
+info:
+  title: Chia API
+  version: 1.0.0
+  description: |
+    Chia splits shared expenses across currencies and tells a group who should pay whom.
+
+    **Core rules**
+
+    * Money is always an integer number of *minor units* (`amount_minor`) plus an ISO 4217
+      currency code. `12.34 SGD` is `1234`; `50 000 VND` is `50000` because the dong has no
+      minor unit. Floats are never used for money.
+    * Every expense and settlement is stored as a balanced double-entry transaction in the
+      group's base currency. The ledger is append-only: mistakes are corrected with a
+      reversal, never by editing or deleting.
+    * A group is addressed by its unguessable ID. Anyone holding the link can read and write
+      the group, so treat the ID as a secret.
+    * `POST` requests that create ledger entries accept an `Idempotency-Key` header. Retrying
+      with the same key returns the original response instead of writing twice.
+
+    Chia never holds or moves money. Payment QR codes (VietQR, PayNow) are generated locally
+    from details the payee entered and are paid in the payer's own banking app.
+  license:
+    name: MIT
+servers:
+  - url: /
+tags:
+  - name: groups
+  - name: ledger
+  - name: payments
+  - name: reference
+  - name: ops
+paths:
+  /healthz:
+    get:
+      tags: [ops]
+      operationId: getHealth
+      summary: Liveness and dependency check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: A dependency is unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/currencies:
+    get:
+      tags: [reference]
+      operationId: listCurrencies
+      summary: Supported currencies and their minor-unit exponents
+      responses:
+        "200":
+          description: Currency list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Currency" }
+  /v1/fx:
+    get:
+      tags: [reference]
+      operationId: getFxRate
+      summary: Current exchange rate between two currencies
+      parameters:
+        - { name: from, in: query, required: true, schema: { $ref: "#/components/schemas/CurrencyCode" } }
+        - { name: to, in: query, required: true, schema: { $ref: "#/components/schemas/CurrencyCode" } }
+      responses:
+        "200":
+          description: Rate expressed as units of `to` per one unit of `from`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FxRate" }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /v1/groups:
+    post:
+      tags: [groups]
+      operationId: createGroup
+      summary: Create a group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGroupRequest" }
+      responses:
+        "201":
+          description: Group created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [groups]
+      operationId: getGroup
+      summary: Get a group and its members
+      responses:
+        "200":
+          description: Group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/members:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [groups]
+      operationId: addMember
+      summary: Add a member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddMemberRequest" }
+      responses:
+        "201":
+          description: Member added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/members/{memberId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - $ref: "#/components/parameters/MemberId"
+    patch:
+      tags: [groups]
+      operationId: updateMember
+      summary: Rename a member or set how they want to be paid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMemberRequest" }
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/expenses:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [ledger]
+      operationId: createExpense
+      summary: Record an expense
+      description: |
+        The amount is converted to the group's base currency at `fx_rate` (or the current
+        market rate when omitted) and that rate is stored with the transaction, so later
+        rate movements never change existing balances. The cost is divided between
+        `shares` in proportion to their weights; leftover minor units are assigned by the
+        largest-remainder method so the shares always add up exactly.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseRequest" }
+      responses:
+        "201":
+          description: Expense recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/settlements:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [ledger]
+      operationId: createSettlement
+      summary: Record that one member paid another
+      description: The amount is in the group's base currency.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSettlementRequest" }
+      responses:
+        "201":
+          description: Settlement recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/transactions:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [ledger]
+      operationId: listTransactions
+      summary: List ledger transactions, newest first
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          description: Opaque value from `next_cursor` of the previous page
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of transactions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransactionPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/transactions/{transactionId}/reversal:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - name: transactionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [ledger]
+      operationId: reverseTransaction
+      summary: Cancel a transaction by posting its mirror image
+      description: A transaction can be reversed once. Reversals cannot themselves be reversed.
+      responses:
+        "201":
+          description: Reversal recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/balances:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [ledger]
+      operationId: getBalances
+      summary: Net balance per member and the transfers that settle the group
+      responses:
+        "200":
+          description: Balances
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Balances" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/groups/{groupId}/members/{memberId}/payment-qr:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - $ref: "#/components/parameters/MemberId"
+    get:
+      tags: [payments]
+      operationId: getPaymentQr
+      summary: Build a VietQR or PayNow payload that pays this member
+      description: |
+        Returns the EMVCo QR payload string; render it with any QR library. When the
+        group's base currency differs from the scheme currency (VND for VietQR, SGD for
+        PayNow) the amount is converted at the current rate.
+      parameters:
+        - name: amount_minor
+          in: query
+          required: true
+          description: Amount in the group's base currency, in minor units
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: QR payload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentQr" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  parameters:
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Client-generated unique key (a UUID works well). A retry with the same key and the
+        same body returns the stored response; the same key with a different body is
+        rejected with 422.
+      schema: { type: string, minLength: 8, maxLength: 128 }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    CurrencyCode:
+      type: string
+      description: ISO 4217 alphabetic code
+      minLength: 3
+      maxLength: 3
+      example: SGD
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code
+          example: validation_failed
+        message:
+          type: string
+    Health:
+      type: object
+      required: [status, postgres, redis]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        postgres: { type: boolean }
+        redis: { type: boolean }
+    Currency:
+      type: object
+      required: [code, exponent, name]
+      properties:
+        code: { $ref: "#/components/schemas/CurrencyCode" }
+        exponent:
+          type: integer
+          description: Number of decimal places of the minor unit
+        name: { type: string }
+    FxRate:
+      type: object
+      required: [from, to, rate, as_of]
+      properties:
+        from: { $ref: "#/components/schemas/CurrencyCode" }
+        to: { $ref: "#/components/schemas/CurrencyCode" }
+        rate:
+          type: string
+          description: Decimal string, units of `to` per one unit of `from`
+          example: "19450.5"
+        as_of: { type: string, format: date-time }
+    CreateGroupRequest:
+      type: object
+      required: [name, base_currency, members]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        base_currency: { $ref: "#/components/schemas/CurrencyCode" }
+        members:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { type: string, minLength: 1, maxLength: 60 }
+    Group:
+      type: object
+      required: [id, name, base_currency, members, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        base_currency: { $ref: "#/components/schemas/CurrencyCode" }
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/Member" }
+        created_at: { type: string, format: date-time }
+    Payout:
+      type: object
+      description: |
+        How a member receives money. For `vietqr` set `bank_bin` (6-digit NAPAS BIN) and
+        `account`. For `paynow` set `proxy_type` and `proxy_value` (a mobile number such
+        as `+6591234567`, or a UEN).
+      required: [method]
+      properties:
+        method: { type: string, enum: [vietqr, paynow] }
+        bank_bin: { type: string, pattern: "^[0-9]{6}$" }
+        account: { type: string, pattern: "^[0-9A-Za-z]{4,19}$" }
+        proxy_type: { type: string, enum: [mobile, uen] }
+        proxy_value: { type: string, maxLength: 20 }
+    Member:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        payout: { $ref: "#/components/schemas/Payout" }
+    AddMemberRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+    UpdateMemberRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        payout: { $ref: "#/components/schemas/Payout" }
+    Share:
+      type: object
+      required: [member_id]
+      properties:
+        member_id: { type: string, format: uuid }
+        weight:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          default: 1
+    CreateExpenseRequest:
+      type: object
+      required: [description, amount_minor, currency, paid_by, shares]
+      properties:
+        description: { type: string, minLength: 1, maxLength: 200 }
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000000000000
+          description: Amount in minor units of `currency`
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        paid_by: { type: string, format: uuid }
+        shares:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/Share" }
+        fx_rate:
+          type: string
+          description: |
+            Optional decimal rate (base currency units per one unit of `currency`), for
+            when you know the rate you actually got. Defaults to the current market rate.
+          example: "0.0000514"
+    CreateSettlementRequest:
+      type: object
+      required: [from, to, amount_minor]
+      properties:
+        from: { type: string, format: uuid, description: Member who paid }
+        to: { type: string, format: uuid, description: Member who received }
+        amount_minor: { type: integer, format: int64, minimum: 1, maximum: 1000000000000 }
+    Posting:
+      type: object
+      required: [member_id, amount_minor]
+      properties:
+        member_id: { type: string, format: uuid }
+        amount_minor:
+          type: integer
+          format: int64
+          description: |
+            Signed amount in the base currency. Positive means the group owes the member;
+            negative means the member owes the group. Postings of a transaction sum to zero.
+    Transaction:
+      type: object
+      required: [id, kind, description, original_amount_minor, original_currency, fx_rate, base_amount_minor, postings, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [expense, settlement, reversal] }
+        description: { type: string }
+        original_amount_minor: { type: integer, format: int64 }
+        original_currency: { $ref: "#/components/schemas/CurrencyCode" }
+        fx_rate: { type: string, description: Rate that was locked in when the transaction was recorded }
+        base_amount_minor: { type: integer, format: int64 }
+        reverses: { type: string, format: uuid, description: Set on reversals }
+        reversed_by: { type: string, format: uuid, description: Set once the transaction has been reversed }
+        postings:
+          type: array
+          items: { $ref: "#/components/schemas/Posting" }
+        created_at: { type: string, format: date-time }
+    TransactionPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Transaction" }
+        next_cursor: { type: string }
+    Balance:
+      type: object
+      required: [member_id, amount_minor]
+      properties:
+        member_id: { type: string, format: uuid }
+        amount_minor: { type: integer, format: int64 }
+    Transfer:
+      type: object
+      required: [from, to, amount_minor]
+      properties:
+        from: { type: string, format: uuid }
+        to: { type: string, format: uuid }
+        amount_minor: { type: integer, format: int64 }
+    Balances:
+      type: object
+      required: [currency, balances, transfers]
+      properties:
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        balances:
+          type: array
+          items: { $ref: "#/components/schemas/Balance" }
+        transfers:
+          type: array
+          description: Suggested payments that bring every balance to zero
+          items: { $ref: "#/components/schemas/Transfer" }
+    PaymentQr:
+      type: object
+      required: [scheme, payload, amount_minor, currency]
+      properties:
+        scheme: { type: string, enum: [vietqr, paynow] }
+        payload: { type: string, description: EMVCo merchant-presented QR string }
+        amount_minor: { type: integer, format: int64, description: Amount encoded in the QR }
+        currency: { $ref: "#/components/schemas/CurrencyCode" }
+        fx_rate: { type: string, description: Present when the amount was converted }

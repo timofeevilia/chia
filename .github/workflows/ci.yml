@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: chia
+          POSTGRES_PASSWORD: chia
+          POSTGRES_DB: chia
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U chia" --health-interval 2s --health-timeout 2s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Generated code is up to date with the OpenAPI spec
+        run: |
+          go generate ./...
+          git diff --exit-code
+
+      - name: Migrations apply, roll back and re-apply
+        env:
+          DATABASE_URL: postgres://chia:chia@localhost:5432/chia?sslmode=disable
+        run: |
+          go run ./cmd/chia migrate up
+          go run ./cmd/chia migrate down
+          go run ./cmd/chia migrate up
+
+      - name: Test
+        env:
+          TEST_DATABASE_URL: postgres://chia:chia@localhost:5432/chia?sslmode=disable
+          TEST_REDIS_URL: redis://localhost:6379/1
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+  loadtest:
+    # Builds the production image, starts the stack with Compose and runs k6
+    # against it. The run fails if latency thresholds or ledger invariants break.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start stack
+        env:
+          RATE_LIMIT_PER_MINUTE: "0"
+        run: |
+          docker compose up --build -d
+          for i in $(seq 1 30); do curl -fsS localhost:8080/healthz && break; sleep 2; done
+      - uses: grafana/setup-k6-action@v1
+      - name: Run k6
+        env:
+          VUS: "30"
+          DURATION: 30s
+        run: k6 run --summary-export=k6-summary.json loadtest/ledger.js
+      - name: API logs on failure
+        if: failure()
+        run: docker compose logs api | tail -100
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-summary
+          path: k6-summary.json
+
+  deploy:
+    # Production deploy: only from main, only after every check above is green.
+    needs: [test, lint, loadtest]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL is not set; skipping deploy." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL" -o /dev/null
+          echo "Render deploy triggered." >> "$GITHUB_STEP_SUMMARY"
