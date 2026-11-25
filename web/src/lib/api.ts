@@ -51,8 +51,8 @@ export const api = {
 	createGroup: (body: S['CreateGroupRequest']) => request<Group>('POST', '/v1/groups', body),
 	group: (id: string) => request<Group>('GET', g(id)),
 	balances: (id: string) => request<Balances>('GET', g(id) + '/balances'),
-	transactions: (id: string, cursor?: string) =>
-		request<S['TransactionPage']>('GET', g(id) + '/transactions?limit=30' + (cursor ? `&cursor=${cursor}` : '')),
+	transactions: (id: string, cursor?: string, limit = 30) =>
+		request<S['TransactionPage']>('GET', `${g(id)}/transactions?limit=${limit}` + (cursor ? `&cursor=${cursor}` : '')),
 	addMember: (id: string, name: string) => request<Member>('POST', g(id) + '/members', { name }),
 	updateMember: (id: string, memberId: string, body: S['UpdateMemberRequest']) =>
 		request<Member>('PATCH', `${g(id)}/members/${memberId}`, body),

@@ -6,6 +6,8 @@
 	import { fmtLocale, t, type Key } from '#lib/i18n.svelte.ts';
 	import { exponentOf, formatAmount, parseAmount, shortRate } from '#lib/money.ts';
 	import { rememberGroup } from '#lib/recent.ts';
+	import SettleGraph from '#lib/SettleGraph.svelte';
+	import { allocate, pairwiseDebts } from '#lib/split.ts';
 
 	const groupId = $derived(page.params.id ?? '');
 
@@ -13,6 +15,9 @@
 	let balances = $state<Balances | null>(null);
 	let txs = $state<Transaction[]>([]);
 	let nextCursor = $state<string | undefined>();
+	// Full history (capped) for the settlement diagram; the activity list pages separately.
+	let allTxs = $state<Transaction[]>([]);
+	const rawDebts = $derived(pairwiseDebts(allTxs));
 	let exponents = $state<Record<string, number>>({ VND: 0, JPY: 0, KRW: 0 });
 	let currencyCodes = $state<string[]>(['SGD', 'VND', 'USD']);
 	let loadError = $state<Key | ''>('');
@@ -38,6 +43,14 @@
 			nextCursor = page1.next_cursor;
 			loadError = '';
 			rememberGroup(g.id, g.name);
+			let all = page1.items;
+			let cursor = page1.next_cursor;
+			for (let i = 0; cursor && i < 5; i++) {
+				const p = await api.transactions(groupId, cursor, 100);
+				all = all.concat(p.items);
+				cursor = p.next_cursor;
+			}
+			allTxs = all;
 		} catch (err) {
 			const e = err as ApiError;
 			if (!group) loadError = e.status === 404 || e.status === 400 ? 'notFound' : 'offline';
@@ -93,6 +106,21 @@
 	let expCurrency = $state('');
 	let paidBy = $state('');
 	let splitIds = $state<string[]>([]);
+	let unequal = $state(false);
+	let weights = $state<Record<string, number>>({});
+	const weightOf = (id: string) => (unequal ? (weights[id] ?? 1) : 1);
+	// Live preview of each person's part, using the same rounding rule as the API.
+	const preview = $derived.by(() => {
+		const amount = parseAmount(amountText, exponentOf(expCurrency, exponents));
+		const out: Record<string, number> = {};
+		if (amount === null || splitIds.length === 0) return out;
+		const parts = allocate(amount, splitIds.map(weightOf));
+		splitIds.forEach((id, i) => (out[id] = parts[i]));
+		return out;
+	});
+	function bump(id: string, by: number) {
+		weights[id] = Math.min(99, Math.max(1, (weights[id] ?? 1) + by));
+	}
 	let rateText = $state('');
 	let marketRate = $state('');
 	let expError = $state('');
@@ -135,7 +163,7 @@
 					amount_minor: amount,
 					currency: expCurrency,
 					paid_by: paidBy,
-					shares: splitIds.map((id) => ({ member_id: id, weight: 1 })),
+					shares: splitIds.map((id) => ({ member_id: id, weight: weightOf(id) })),
 					...(rateText.trim() && expCurrency !== group.base_currency ? { fx_rate: rateText.trim().replace(',', '.') } : {})
 				},
 				expenseKey
@@ -333,6 +361,23 @@
 		{/if}
 	</section>
 
+	{#if group.members.length >= 3 && rawDebts.length > 0}
+		<section class="card" aria-labelledby="h-graph">
+			<h2 id="h-graph">{t('graphTitle')}</h2>
+			<SettleGraph
+				members={group.members}
+				before={rawDebts}
+				after={balances.transfers.map((x) => ({ from: x.from, to: x.to, amount: x.amount_minor }))}
+				format={(minor) => money(minor, balances?.currency ?? '')}
+				labels={{
+					before: t('graphBefore'),
+					after: t('graphAfter'),
+					summary: t('graphSummary', { before: String(rawDebts.length), after: String(balances.transfers.length) })
+				}}
+			/>
+		</section>
+	{/if}
+
 	<form class="card" onsubmit={addExpense} aria-labelledby="h-add">
 		<h2 id="h-add">{t('addExpense')}</h2>
 		<div class="field">
@@ -366,11 +411,25 @@
 		{/if}
 		<fieldset>
 			<legend>{t('splitBetween')}</legend>
-			<div class="row wrap">
+			<ul class="list split">
 				{#each group.members as m (m.id)}
-					<label class="check"><input type="checkbox" value={m.id} bind:group={splitIds} /> {m.name}</label>
+					{@const on = splitIds.includes(m.id)}
+					<li class="row">
+						<label class="pick grow"><input type="checkbox" value={m.id} bind:group={splitIds} /> {m.name}</label>
+						{#if unequal && on}
+							<span class="stepper">
+								<button type="button" class="sm" aria-label={t('fewer', { name: m.name })} onclick={() => bump(m.id, -1)}>−</button>
+								<span class="num" aria-live="polite">{weightOf(m.id)}</span>
+								<button type="button" class="sm" aria-label={t('more', { name: m.name })} onclick={() => bump(m.id, 1)}>+</button>
+							</span>
+						{/if}
+						{#if on && preview[m.id] !== undefined}
+							<span class="num small muted part">{money(preview[m.id], expCurrency)}</span>
+						{/if}
+					</li>
 				{/each}
-			</div>
+			</ul>
+			<label class="pick toggle"><input type="checkbox" bind:checked={unequal} /> {t('unequal')}</label>
 		</fieldset>
 		<button class="primary" disabled={saving}>{saving ? t('saving') : t('save')}</button>
 		{#if expError}<p class="error" role="alert">{expError}</p>{/if}
@@ -404,11 +463,38 @@
 								{/if}
 							</div>
 						</div>
-						{#if tx.reversed_by}
-							<span class="small muted">{t('cancelled')}</span>
-						{:else if tx.kind !== 'reversal'}
-							<button class="ghost sm" onclick={() => undo(tx)}>{t('undo')}</button>
-						{/if}
+						<div class="row meta">
+							{#if tx.reversed_by}
+								<span class="small muted">{t('cancelled')}</span>
+							{:else if tx.kind !== 'reversal'}
+								<button class="ghost sm" onclick={() => undo(tx)}>{t('undo')}</button>
+							{/if}
+						</div>
+						<details class="ledger">
+							<summary class="small">{t('ledger')}</summary>
+							<table class="small">
+								<tbody>
+									{#each tx.postings as p, i (i)}
+										<tr>
+											<td>{nameOf(p.member_id)}</td>
+											<td class="num" class:pos={p.amount_minor > 0} class:neg={p.amount_minor < 0}>
+												{p.amount_minor > 0 ? '+' : '−'}{money(Math.abs(p.amount_minor), group.base_currency)}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+								<tfoot>
+									<tr>
+										<td>{t('ledgerSum')}</td>
+										<td class="num">{money(tx.postings.reduce((a, p) => a + p.amount_minor, 0), group.base_currency)}</td>
+									</tr>
+								</tfoot>
+							</table>
+							{#if tx.original_currency !== group.base_currency}
+								<p class="small muted">{t('rateLocked', { from: tx.original_currency, rate: shortRate(tx.fx_rate), to: group.base_currency })}</p>
+							{/if}
+							<p class="small muted id">{tx.id}</p>
+						</details>
 					</li>
 				{/each}
 			</ul>
@@ -535,6 +621,74 @@
 		padding: 0;
 		margin-bottom: 6px;
 	}
+	.split > li {
+		padding: 4px 0;
+		border: 0;
+		min-height: 44px;
+	}
+	.pick {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 400;
+		font-size: 1rem;
+		margin: 0;
+		min-height: 40px;
+		cursor: pointer;
+	}
+	.pick input {
+		width: 18px;
+		height: 18px;
+		accent-color: var(--brand);
+	}
+	.toggle {
+		margin-top: 6px;
+		color: var(--muted);
+	}
+	.stepper {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.stepper button {
+		width: 36px;
+		padding: 0;
+	}
+	.part {
+		min-width: 92px;
+		text-align: right;
+	}
+	.meta {
+		min-height: 0;
+	}
+	.ledger summary {
+		cursor: pointer;
+		color: var(--muted);
+		padding: 4px 0;
+	}
+	.ledger table {
+		width: 100%;
+		border-collapse: collapse;
+		margin: 6px 0;
+	}
+	.ledger td {
+		padding: 3px 0;
+	}
+	.ledger td.num {
+		text-align: right;
+	}
+	.ledger tfoot td {
+		border-top: 1px solid var(--line);
+		font-weight: 600;
+	}
+	.ledger p {
+		margin: 2px 0;
+	}
+	.ledger .id {
+		font-family: ui-monospace, monospace;
+		font-size: 0.75rem;
+		overflow-wrap: anywhere;
+	}
 	.title {
 		font-weight: 600;
 		overflow-wrap: anywhere;
@@ -542,8 +696,8 @@
 	.amt {
 		text-align: right;
 	}
-	li.void .title,
-	li.void .amt {
+	li.void > .row .title,
+	li.void > .row .amt {
 		text-decoration: line-through;
 		opacity: 0.55;
 	}

@@ -137,6 +137,18 @@ npm run dev        # expects the API on http://localhost:8080
 
 Set `VITE_API_URL` at build time to point it at another API.
 
+What it does beyond forms and lists:
+
+* **One-click demo** – builds a sample trip with expenses in three currencies through the
+  public API.
+* **Settlement diagram** – an animated graph of who owes whom, before and after the debts
+  are simplified, drawn in plain SVG with Svelte transitions.
+* **Ledger view** – every activity item expands to its double-entry postings, their zero
+  sum and the exchange rate that was locked in.
+* **Unequal shares** – a live preview of each person's part, computed with the same
+  largest-remainder rule the API uses.
+* **Live updates** – changes made by anyone in the group appear without a reload.
+
 ## Development
 
 ```bash
@@ -220,8 +232,10 @@ and a cron entry that picks up new builds:
   got as `fx_rate`.
 * Access control is the secrecy of the group link. That suits friends splitting a trip,
   not confidential data.
-* QR payloads follow the published VietQR and PayNow formats and are covered by structural
-  tests; always confirm the recipient and amount shown by your banking app before paying.
+* QR payloads have not been scanned with a live banking app. The VietQR output is tested
+  byte-for-byte against a payload published by an independent open-source generator, and the
+  PayNow layout is tested object-by-object against another. Always confirm the recipient and
+  amount shown by your banking app before paying.
 
 ## License
 

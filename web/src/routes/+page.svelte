@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api, ApiError, type Currency } from '#lib/api.ts';
+	import { createDemoGroup } from '#lib/demo.ts';
 	import { t } from '#lib/i18n.svelte.ts';
 	import { loadRecent, rememberGroup } from '#lib/recent.ts';
 
@@ -22,6 +23,26 @@
 		const n = memberInput.trim().replace(/\s+/g, ' ');
 		if (n && !members.includes(n)) members.push(n);
 		memberInput = '';
+	}
+
+	let demoProgress = $state('');
+
+	async function demo() {
+		busy = true;
+		error = '';
+		demoProgress = t('demoPreparing', { done: '0', total: '8' });
+		try {
+			const id = await createDemoGroup((done, total) => {
+				demoProgress = t('demoPreparing', { done: String(done), total: String(total) });
+			});
+			await goto(`/g/${id}`);
+		} catch (err) {
+			const e = err as ApiError;
+			error = e.status === 0 ? t('offline') : e.status === 429 ? t('rateLimited') : e.message || t('failed');
+		} finally {
+			busy = false;
+			demoProgress = '';
+		}
 	}
 
 	async function submit(e: SubmitEvent) {
@@ -49,6 +70,10 @@
 <section class="hero">
 	<h1>{t('tagline')}</h1>
 	<p class="muted">{t('intro')}</p>
+	<div class="row wrap">
+		<button class="primary" onclick={demo} disabled={busy}>{demoProgress || t('tryDemo')}</button>
+		<span class="small muted">{t('demoHint')}</span>
+	</div>
 </section>
 
 <form class="card" onsubmit={submit}>

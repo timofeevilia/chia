@@ -80,6 +80,19 @@ const en = {
 	rateLimited: 'Too many requests. Wait a minute and try again.',
 	nameTaken: 'Someone in the group already has this name.',
 	invalidPayout: 'These payment details do not look right.',
+	tryDemo: 'Try the demo',
+	demoHint: 'Opens a sample trip with expenses in three currencies.',
+	demoPreparing: 'Preparing demo… {done}/{total}',
+	graphTitle: 'How the debts simplify',
+	graphBefore: 'All debts',
+	graphAfter: 'Simplified',
+	graphSummary: '{before} separate debts settle with {after} payments.',
+	ledger: 'Ledger entries',
+	ledgerSum: 'Sum',
+	rateLocked: 'Rate locked at 1 {from} = {rate} {to}',
+	unequal: 'Unequal shares',
+	fewer: 'Fewer shares for {name}',
+	more: 'More shares for {name}',
 	failed: 'Something went wrong. Try again.'
 };
 
@@ -163,6 +176,19 @@ const vi: typeof en = {
 	rateLimited: 'Quá nhiều yêu cầu. Chờ một phút rồi thử lại.',
 	nameTaken: 'Trong nhóm đã có người dùng tên này.',
 	invalidPayout: 'Thông tin nhận tiền có vẻ chưa đúng.',
+	tryDemo: 'Xem bản demo',
+	demoHint: 'Mở một chuyến đi mẫu với chi tiêu bằng ba loại tiền.',
+	demoPreparing: 'Đang chuẩn bị demo… {done}/{total}',
+	graphTitle: 'Các khoản nợ được rút gọn thế nào',
+	graphBefore: 'Tất cả khoản nợ',
+	graphAfter: 'Đã rút gọn',
+	graphSummary: '{before} khoản nợ riêng lẻ được thanh toán bằng {after} lần chuyển.',
+	ledger: 'Bút toán sổ cái',
+	ledgerSum: 'Tổng',
+	rateLocked: 'Tỷ giá cố định: 1 {from} = {rate} {to}',
+	unequal: 'Chia không đều',
+	fewer: 'Giảm phần của {name}',
+	more: 'Tăng phần của {name}',
 	failed: 'Đã có lỗi xảy ra. Hãy thử lại.'
 };
 

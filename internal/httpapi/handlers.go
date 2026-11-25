@@ -260,7 +260,7 @@ func (s *Server) UpdateMember(ctx context.Context, req UpdateMemberRequestObject
 				return nil, fail(http.StatusBadRequest, "validation_failed", "paynow needs proxy_type and proxy_value")
 			}
 			payout.ProxyType, payout.ProxyValue = string(*p.ProxyType), *p.ProxyValue
-			_, err = qr.PayNow(payout.ProxyType, payout.ProxyValue, "1.00", "")
+			_, err = qr.PayNow(payout.ProxyType, payout.ProxyValue, "1.00", "", time.Now())
 		}
 		if err != nil {
 			return nil, fail(http.StatusBadRequest, "validation_failed",
@@ -478,7 +478,7 @@ func (s *Server) GetPaymentQr(ctx context.Context, req GetPaymentQrRequestObject
 	}
 	amount := money.Format(out.AmountMinor, to)
 	if payee.Payout.Method == "paynow" {
-		out.Payload, err = qr.PayNow(payee.Payout.ProxyType, payee.Payout.ProxyValue, amount, "CHIA")
+		out.Payload, err = qr.PayNow(payee.Payout.ProxyType, payee.Payout.ProxyValue, amount, "CHIA", time.Now().AddDate(1, 0, 0))
 	} else {
 		out.Payload, err = qr.VietQR(payee.Payout.BankBIN, payee.Payout.Account, amount, "CHIA")
 	}

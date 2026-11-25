@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var ErrInvalid = errors.New("qr: invalid payment details")
@@ -70,8 +71,8 @@ func VietQR(bankBIN, account, amount, reference string) (string, error) {
 }
 
 // PayNow builds an SGQR PayNow payload. proxyType is "mobile" (+65XXXXXXXX) or
-// "uen"; amount is in dollars ("12.50").
-func PayNow(proxyType, proxyValue, amount, reference string) (string, error) {
+// "uen"; amount is in dollars ("12.50"); banking apps refuse the code after expiry.
+func PayNow(proxyType, proxyValue, amount, reference string, expiry time.Time) (string, error) {
 	var kind string
 	switch proxyType {
 	case "mobile":
@@ -93,7 +94,8 @@ func PayNow(proxyType, proxyValue, amount, reference string) (string, error) {
 	merchant := tlv("00", "SG.PAYNOW") +
 		tlv("01", kind) +
 		tlv("02", proxyValue) +
-		tlv("03", "0") // amount not editable by the payer
+		tlv("03", "0") + // amount not editable by the payer
+		tlv("04", expiry.Format("20060102"))
 	b := tlv("00", "01") +
 		tlv("01", "12") +
 		tlv("26", merchant) +
