@@ -191,7 +191,23 @@ GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs on every push and pul
 3. **loadtest** – builds the Docker image, starts the stack with Compose, runs k6.
 4. **web** – generated API types match the spec; type check, unit tests, production build.
 5. **deploy** and **deploy-web** – on `main` only, after every job above passes. The API is
-   deployed to Render through a deploy hook; the web app is copied to the web host over SSH.
+   deployed to Render through a deploy hook. The web build is published to the `web-dist`
+   branch, which the web host pulls on a schedule (see below).
+
+### Web host setup (pull-based deploy)
+
+The web app runs on shared hosting that allows no inbound SSH. The host pulls instead, so no
+host credentials are stored anywhere else. One-time setup on the host:
+
+```bash
+git clone --depth 1 --branch web-dist https://github.com/timofeevilia/chia.git ~/public_html/chia.krolikx.com
+```
+
+and a cron entry that picks up new builds:
+
+```bash
+*/5 * * * * cd ~/public_html/chia.krolikx.com && git fetch -q --depth 1 origin web-dist && git reset -q --hard FETCH_HEAD
+```
 
 ## Limitations
 

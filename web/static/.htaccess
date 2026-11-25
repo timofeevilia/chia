@@ -1,5 +1,7 @@
 # Apache (cPanel): serve the single-page app for any path that is not a file.
 RewriteEngine On
+# The document root is a git checkout of the build; never serve its metadata.
+RewriteRule ^\.git - [R=404,L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ /index.html [L]

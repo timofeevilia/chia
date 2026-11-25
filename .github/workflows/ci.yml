@@ -143,34 +143,28 @@ jobs:
           echo "Render deploy triggered." >> "$GITHUB_STEP_SUMMARY"
 
   deploy-web:
-    # Static files go to the web host over SSH. The host key is pinned through
-    # a secret, so the runner never trusts an unknown server.
+    # The web host accepts no inbound SSH, so deployment is pull-based: the
+    # build is published to the `web-dist` branch and a cron job on the host
+    # fetches it. No credentials for the host exist outside the host.
     needs: [test, lint, loadtest, web]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    env:
-      SSH_KEY: ${{ secrets.WEB_SSH_KEY }}
-      SSH_KNOWN_HOSTS: ${{ secrets.WEB_SSH_KNOWN_HOSTS }}
-      SSH_HOST: ${{ secrets.WEB_SSH_HOST }}
-      SSH_USER: ${{ secrets.WEB_SSH_USER }}
-      SSH_PORT: ${{ secrets.WEB_SSH_PORT }}
-      TARGET_DIR: ${{ vars.WEB_TARGET_DIR || 'public_html/chia.krolikx.com' }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: web-build
           path: build
-      - name: Upload to web host
+      - name: Publish build to the web-dist branch
+        working-directory: build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_KNOWN_HOSTS" ]; then
-            echo "Web host secrets are not set; skipping deploy." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          SSH="ssh -i $HOME/.ssh/deploy_key -p ${SSH_PORT:-22} -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_USER@$SSH_HOST"
-          # Old fingerprinted assets are removed; everything else is overwritten in place.
-          tar -C build -czf - . | $SSH "mkdir -p '$TARGET_DIR' && rm -rf '$TARGET_DIR/_app' && tar -xzf - -C '$TARGET_DIR'"
-          echo "Web app deployed." >> "$GITHUB_STEP_SUMMARY"
+          git init -q -b web-dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web build for ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" web-dist
+          echo "Web build published to web-dist." >> "$GITHUB_STEP_SUMMARY"
