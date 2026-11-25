@@ -2,8 +2,8 @@
 RewriteEngine On
 # The document root is a git checkout of the build; never serve its metadata.
 RewriteRule ^\.git - [R=404,L]
+# Directories also go to the app, so the server never lists their contents.
 RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ /index.html [L]
 
 <IfModule mod_headers.c>

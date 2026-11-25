@@ -11,7 +11,10 @@ app in Vietnam (VietQR / NAPAS 247) or Singapore (PayNow / SGQR).
 
 Chia never holds or moves money. It keeps the books and prepares the payment request.
 
-> Status: the API and the web app are complete and tested. Public deployment is being set up.
+**Live:** <https://chia.krolikx.com> · **API reference:** <https://api.chia.krolikx.com/docs>
+
+> The API runs on a free tier that sleeps when idle, so the first request after a quiet
+> period can take up to a minute.
 
 ## What is interesting here
 
