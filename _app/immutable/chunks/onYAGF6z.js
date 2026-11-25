@@ -1,0 +1,1 @@
+var e=`chia.recent`;function t(){try{let t=JSON.parse(localStorage.getItem(e)??`[]`);return Array.isArray(t)?t:[]}catch{return[]}}function n(n,r){try{let i=[{id:n,name:r},...t().filter(e=>e.id!==n)].slice(0,8);localStorage.setItem(e,JSON.stringify(i))}catch{}}export{n,t};

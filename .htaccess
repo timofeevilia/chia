@@ -1,0 +1,17 @@
+# Apache (cPanel): serve the single-page app for any path that is not a file.
+RewriteEngine On
+# The document root is a git checkout of the build; never serve its metadata.
+RewriteRule ^\.git - [R=404,L]
+# Directories also go to the app, so the server never lists their contents.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ /index.html [L]
+
+<IfModule mod_headers.c>
+  # Fingerprinted build assets never change; the HTML shell must stay fresh.
+  <FilesMatch "\.(js|css|woff2|svg|png)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
